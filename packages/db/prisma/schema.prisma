@@ -1,0 +1,173 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id String @id @default(uuid()) @map("user_id") // Supabase-managed
+  // Other user fields if needed, but for now, assume Supabase handles most
+  accounts    Account[]
+  categories  Category[]
+  transactions Transaction[]
+  holdings    Holding[]
+  setting     Setting?
+  tasks       Task[]
+
+  @@map("users")
+}
+
+model Currency {
+  code      String      @id @unique @map("code")
+  name      String
+  decimals  Int
+  fxRatesBase  FxRate[] @relation("BaseCurrency")
+  fxRatesQuote FxRate[] @relation("QuoteCurrency")
+  accounts  Account[]
+  transactionsOriginal Transaction[] @relation("OriginalCurrency")
+  transactionsBase     Transaction[] @relation("BaseCurrency")
+  holdings  Holding[]
+
+  @@map("currencies")
+}
+
+model FxRate {
+  id        String   @id @default(uuid())
+  date      DateTime @db.Date
+  baseCode  String
+  base      Currency @relation("BaseCurrency", fields: [baseCode], references: [code])
+  quoteCode String
+  quote     Currency @relation("QuoteCurrency", fields: [quoteCode], references: [code])
+  rate      Decimal  @db.Decimal(10, 6)
+  source    String
+
+  @@unique([date, baseCode, quoteCode])
+  @@map("fx_rates")
+}
+
+model Account {
+  id           String        @id @default(uuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id])
+  name         String
+  currencyCode String
+  currency     Currency      @relation(fields: [currencyCode], references: [code])
+  type         String // e.g., 'cash', 'bank', 'credit_card', 'investment'
+  note         String?
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  transactions Transaction[]
+
+  @@map("accounts")
+}
+
+model Category {
+  id           String        @id @default(uuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id])
+  name         String
+  type         CategoryType // 'income' | 'expense'
+  icon         String?
+  transactions Transaction[]
+
+  @@map("categories")
+}
+
+enum CategoryType {
+  income
+  expense
+}
+
+model Transaction {
+  id               String    @id @default(uuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id])
+  accountId        String
+  account          Account   @relation(fields: [accountId], references: [id])
+  categoryId       String?s
+  category         Category? @relation(fields: [categoryId], references: [id])
+  type             TransactionType // 'income'|'expense'|'transfer'
+  amountOriginal   Decimal   @db.Decimal(18, 4)
+  currencyOriginal String
+  originalCurrency Currency  @relation("OriginalCurrency", fields: [currencyOriginal], references: [code])
+  amountBase       Decimal   @db.Decimal(18, 4)
+  currencyBase     String
+  baseCurrency     Currency  @relation("BaseCurrency", fields: [currencyBase], references: [code])
+  tags             String[]  @default([]) @db.Array(Text)
+  memo             String?
+  txDate           DateTime  @db.Date @map("tx_date")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  @@map("transactions")
+}
+
+enum TransactionType {
+  income
+  expense
+  transfer
+}
+
+model Holding {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  symbol       String
+  exchange     String
+  quantity     Decimal  @db.Decimal(18, 4)
+  avgCost      Decimal  @db.Decimal(18, 4) @map("avg_cost")
+  currencyCode String
+  currency     Currency @relation(fields: [currencyCode], references: [code])
+  note         String?
+
+  @@map("holdings")
+}
+
+model Price {
+  id           String   @id @default(uuid())
+  symbol       String
+  exchange     String
+  price        Decimal  @db.Decimal(18, 4)
+  currencyCode String
+  currency     Currency @relation(fields: [currencyCode], references: [code])
+  asOf         DateTime @db.Date @map("as_of")
+
+  @@unique([symbol, exchange, asOf])
+  @@map("prices")
+}
+
+model Setting {
+  userId          String   @id
+  user            User     @relation(fields: [userId], references: [id])
+  baseCurrency    String
+  displayCurrencies String[] @default([]) @db.Array(Text)
+  locale          String
+  roundingRule    String? // e.g., 'bankers_rounding', 'floor'
+
+  @@map("settings")
+}
+
+model Task {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  title     String
+  dueDate   DateTime @db.Date @map("due_date")
+  status    TaskStatus
+  note      String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("tasks")
+}
+
+enum TaskStatus {
+  todo
+  in_progress
+  done
+}
